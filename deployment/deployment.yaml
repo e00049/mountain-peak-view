@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: single-page-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: single-page-app
+  template:
+    metadata:
+      labels:
+        app: single-page-app
+    spec:
+      containers:
+      - name: single-page-app
+        image: IMAGE_PLACEHOLDER
+        ports:
+        - containerPort: 8080

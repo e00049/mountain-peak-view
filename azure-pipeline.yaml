@@ -5,21 +5,29 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
+  PROJECT_ID: "e00049-development-project"
+  REGION: "us-central1"
+  CLUSTER_NAME: "mountain-peak-view"
   IMAGE_REPO: "e00049-development-project/mountain-peak-view/single-page-app"
 
 steps:
-# Install Docker
+
+# ✅ 0️⃣ Checkout Repo (important)
+- checkout: self
+  displayName: "Checkout Source Code"
+
+# ✅ 1️⃣ Install Docker
 - task: DockerInstaller@0
   displayName: "Install Docker"
 
-# Login to GAR
+# ✅ 2️⃣ Login to Google Artifact Registry
 - task: Docker@2
   displayName: "Login to Google Artifact Registry"
   inputs:
     command: login
     containerRegistry: GAR_Connection_1
 
-# ✅ Build Image (NO hostname here!)
+# ✅ 3️⃣ Build Image with Dynamic Build Name
 - task: Docker@2
   displayName: "Build Docker Image"
   inputs:
@@ -27,21 +35,49 @@ steps:
     repository: $(IMAGE_REPO)
     dockerfile: '**/Dockerfile'
     tags: |
-      v$(Build.BuildId)
+      $(Build.BuildNumber)
       latest
 
-# ✅ Push Image (NO hostname here!)
+# ✅ 4️⃣ Push Image to GAR
 - task: Docker@2
-  displayName: "Push Docker Image"
+  displayName: "Push Docker Image to GAR"
   inputs:
     command: push
     repository: $(IMAGE_REPO)
     tags: |
-      v$(Build.BuildId)
+      $(Build.BuildNumber)
       latest
 
-# Export Image URI
+# ✅ 5️⃣ Create Image URI Variable
 - script: |
-    echo "##vso[task.setvariable variable=IMAGE_URI]us-central1-docker.pkg.dev/$(IMAGE_REPO):v$(Build.BuildId)"
+    IMAGE_URI="us-central1-docker.pkg.dev/$(IMAGE_REPO):$(Build.BuildNumber)"
+    echo "##vso[task.setvariable variable=IMAGE_URI]$IMAGE_URI"
+    echo "✅ Image Pushed: $IMAGE_URI"
   displayName: "Export IMAGE_URI"
 
+# ✅ 6️⃣ Authenticate to GCP (for GKE Access)
+- script: |
+    echo "$(GCP_SA_KEY)" > key.json
+    gcloud auth activate-service-account --key-file=key.json
+    gcloud config set project $(PROJECT_ID)
+    gcloud container clusters get-credentials $(CLUSTER_NAME) --region $(REGION)
+  displayName: "Authenticate to GKE"
+  env:
+    GCP_SA_KEY: $(GCP_SA_KEY)
+
+# ✅ 7️⃣ Deploy to GKE using GitHub Manifests with Dynamic Image
+- script: |
+    echo "🚀 Deploying Image: $(IMAGE_URI)"
+
+    # Replace placeholder with real image
+    sed -i "s|IMAGE_PLACEHOLDER|$(IMAGE_URI)|g" deployment/deployment.yaml
+
+    echo "📄 Final Deployment YAML:"
+    cat deployment/deployment.yaml
+
+    # Apply Kubernetes manifests
+    kubectl apply -f deployment/deployment.yaml
+    kubectl apply -f deployment/service.yaml
+
+    echo "✅ Deployment Successful"
+  displayName: "Deploy to GKE using Dynamic Image"
