@@ -4,15 +4,22 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-# ✅ Run all steps inside Google Cloud SDK container
+# ✅ Run inside Google Cloud SDK container
 container:
   image: google/cloud-sdk:latest
 
+# ✅ ✅ ✅ LINK VARIABLE GROUP (THIS WAS MISSING)
 variables:
-  PROJECT_ID: "e00049-development-project"
-  REGION: "us-central1"
-  CLUSTER_NAME: "mountain-peak-view"
-  IMAGE_REPO: "e00049-development-project/mountain-peak-view/single-page-app"
+- group: mountain-peak-view
+
+- name: PROJECT_ID
+  value: e00049-development-project
+- name: REGION
+  value: us-central1
+- name: CLUSTER_NAME
+  value: mountain-peak-view
+- name: IMAGE_REPO
+  value: e00049-development-project/mountain-peak-view/single-page-app
 
 steps:
 
@@ -20,12 +27,12 @@ steps:
 - checkout: self
   displayName: "Checkout Source Code"
 
-# ✅ 2️⃣ Authenticate to GCP & GKE
+# ✅ 2️⃣ Authenticate to GCP & GKE (FIXED)
 - script: |
     echo "$(GCP_SA_KEY)" | base64 -d > key.json
 
     echo "✅ Key file created:"
-    ls -l key.json
+    head -n 2 key.json
 
     gcloud auth activate-service-account --key-file=key.json
     gcloud config set project $(PROJECT_ID)
@@ -33,9 +40,6 @@ steps:
 
     kubectl get nodes
   displayName: "Authenticate to GKE"
-  env:
-    GCP_SA_KEY: $(GCP_SA_KEY)
-
 
 # ✅ 3️⃣ Login to Google Artifact Registry
 - script: |
@@ -59,13 +63,11 @@ steps:
     docker push us-central1-docker.pkg.dev/$(IMAGE_REPO):latest
   displayName: "Push Docker Image to GAR"
 
-# ✅ 6️⃣ Deploy to GKE using GitHub Deployment YAML
+# ✅ 6️⃣ Deploy to GKE using GitHub YAML
 - script: |
     echo "Deploying Image: $(IMAGE_URI)"
 
     sed -i "s|IMAGE_PLACEHOLDER|$(IMAGE_URI)|g" deployment/deployment.yaml
-
-    cat deployment/deployment.yaml
 
     kubectl apply -f deployment/deployment.yaml
     kubectl apply -f deployment/service.yaml
