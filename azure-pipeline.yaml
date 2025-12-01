@@ -4,14 +4,12 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-# ✅ Run inside Google Cloud SDK container
+# Use Google Cloud SDK container
 container:
   image: google/cloud-sdk:latest
 
-# ✅ ✅ ✅ LINK VARIABLE GROUP (THIS WAS MISSING)
+# Set variables for the pipeline
 variables:
-- group: mountain-peak-view
-
 - name: PROJECT_ID
   value: e00049-development-project
 - name: REGION
@@ -23,30 +21,33 @@ variables:
 
 steps:
 
-# ✅ 1️⃣ Checkout Source
+# Checkout the source code
 - checkout: self
   displayName: "Checkout Source Code"
 
-# ✅ 2️⃣ Authenticate to GCP & GKE (FIXED)
+# Download the GCP service account key from Secure Files
+- task: DownloadSecureFile@1
+  name: gcpkey
+  displayName: "Download GCP Service Account Key"
+  inputs:
+    secureFile: mountain-peak-view.json
+
+# Authenticate to GCP and configure kubectl for GKE
 - script: |
-    echo "$(GCP_SA_KEY)" | base64 -d > key.json
-
-    echo "✅ Key file created:"
-    head -n 2 key.json
-
-    gcloud auth activate-service-account --key-file=key.json
+    gcloud auth activate-service-account --key-file=$(gcpkey.secureFilePath)
     gcloud config set project $(PROJECT_ID)
     gcloud container clusters get-credentials $(CLUSTER_NAME) --region $(REGION)
 
+    # Verify connection
     kubectl get nodes
   displayName: "Authenticate to GKE"
 
-# ✅ 3️⃣ Login to Google Artifact Registry
+# Login to Google Artifact Registry
 - script: |
     gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
   displayName: "Login to GAR"
 
-# ✅ 4️⃣ Build Docker Image with Dynamic Build Name
+# Build Docker Image with dynamic tag
 - script: |
     IMAGE_URI="us-central1-docker.pkg.dev/$(IMAGE_REPO):$(Build.BuildNumber)"
 
@@ -57,13 +58,13 @@ steps:
     echo "Built Image: $IMAGE_URI"
   displayName: "Build Docker Image"
 
-# ✅ 5️⃣ Push Image to GAR
+# Push the Docker image to GAR
 - script: |
     docker push us-central1-docker.pkg.dev/$(IMAGE_REPO):$(Build.BuildNumber)
     docker push us-central1-docker.pkg.dev/$(IMAGE_REPO):latest
   displayName: "Push Docker Image to GAR"
 
-# ✅ 6️⃣ Deploy to GKE using GitHub YAML
+# Deploy to GKE using the deployment YAML
 - script: |
     echo "Deploying Image: $(IMAGE_URI)"
 
@@ -71,8 +72,6 @@ steps:
 
     kubectl apply -f deployment/deployment.yaml
     kubectl apply -f deployment/service.yaml
-
-    kubectl rollout status deployment/single-page-app --timeout=180s
 
     echo "✅ Deployment Completed Successfully"
   displayName: "Deploy to GKE"
