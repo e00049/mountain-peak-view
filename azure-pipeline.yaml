@@ -5,10 +5,9 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  GAR_URL: "us-central1-docker.pkg.dev/e00049-development-project/mountain-peak-view/single-page-app"
+  IMAGE_REPO: "e00049-development-project/mountain-peak-view/single-page-app"
 
 steps:
-
 # Install Docker
 - task: DockerInstaller@0
   displayName: "Install Docker"
@@ -20,31 +19,29 @@ steps:
     command: login
     containerRegistry: GAR_Connection_1
 
-# Build Image
+# ✅ Build Image (NO hostname here!)
 - task: Docker@2
   displayName: "Build Docker Image"
   inputs:
     command: build
-    repository: $(GAR_URL)
+    repository: $(IMAGE_REPO)
     dockerfile: '**/Dockerfile'
-    containerRegistry: GAR_Connection_1
     tags: |
       v$(Build.BuildId)
       latest
 
-# Push Image
+# ✅ Push Image (NO hostname here!)
 - task: Docker@2
   displayName: "Push Docker Image"
   inputs:
     command: push
-    repository: $(GAR_URL)
-    containerRegistry: GAR_Connection_1
+    repository: $(IMAGE_REPO)
     tags: |
       v$(Build.BuildId)
       latest
 
 # Export Image URI
 - script: |
-    echo "##vso[task.setvariable variable=IMAGE_URI]$(GAR_URL):v$(Build.BuildId)"
-  displayName: "Export IMAGE_URI Variable"
+    echo "##vso[task.setvariable variable=IMAGE_URI]us-central1-docker.pkg.dev/$(IMAGE_REPO):v$(Build.BuildId)"
+  displayName: "Export IMAGE_URI"
 
