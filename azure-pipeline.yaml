@@ -55,15 +55,22 @@ steps:
     echo "✅ Image Pushed: $IMAGE_URI"
   displayName: "Export IMAGE_URI"
 
-# ✅ 6️⃣ Authenticate to GCP (for GKE Access)
+
+# ✅ 6️⃣ Authenticate to GKE (Correct & Safe)
 - script: |
-    echo "$(GCP_SA_KEY)" > key.json
+    echo "$(GCP_SA_KEY)" | tr -d '\r' > key.json
+    cat key.json | head -n 2
+
     gcloud auth activate-service-account --key-file=key.json
     gcloud config set project $(PROJECT_ID)
     gcloud container clusters get-credentials $(CLUSTER_NAME) --region $(REGION)
+
+    gcloud auth list
+    kubectl get nodes
   displayName: "Authenticate to GKE"
   env:
     GCP_SA_KEY: $(GCP_SA_KEY)
+
 
 # ✅ 7️⃣ Deploy to GKE using GitHub Manifests with Dynamic Image
 - script: |
