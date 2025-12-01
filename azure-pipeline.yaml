@@ -4,11 +4,9 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-# Use Google Cloud SDK container
 container:
   image: google/cloud-sdk:latest
 
-# Set variables for the pipeline
 variables:
 - name: PROJECT_ID
   value: e00049-development-project
@@ -24,6 +22,11 @@ steps:
 # Checkout the source code
 - checkout: self
   displayName: "Checkout Source Code"
+
+# Install Docker inside the container
+- script: |
+    apt-get update && apt-get install -y docker.io
+  displayName: "Install Docker"
 
 # Download the GCP service account key from Secure Files
 - task: DownloadSecureFile@1
@@ -72,6 +75,8 @@ steps:
 
     kubectl apply -f deployment/deployment.yaml
     kubectl apply -f deployment/service.yaml
+
+    kubectl rollout status deployment/single-page-app --timeout=180s
 
     echo "✅ Deployment Completed Successfully"
   displayName: "Deploy to GKE"
