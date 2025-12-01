@@ -22,7 +22,10 @@ steps:
 
 # ✅ 2️⃣ Authenticate to GCP & GKE
 - script: |
-    echo "$(GCP_SA_KEY)" > key.json
+    echo "$(GCP_SA_KEY)" | base64 -d > key.json
+
+    echo "✅ Key file created:"
+    ls -l key.json
 
     gcloud auth activate-service-account --key-file=key.json
     gcloud config set project $(PROJECT_ID)
@@ -32,6 +35,7 @@ steps:
   displayName: "Authenticate to GKE"
   env:
     GCP_SA_KEY: $(GCP_SA_KEY)
+
 
 # ✅ 3️⃣ Login to Google Artifact Registry
 - script: |
