@@ -1,0 +1,43 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  GAR_URL: "us-central1-docker.pkg.dev/e00049-development-project/mountain-peak-view/single-page-app"
+
+steps:
+# Install Docker
+- task: DockerInstaller@0
+  displayName: "Install Docker"
+
+# Login to GAR
+- task: Docker@2
+  displayName: "Login to Google Artifact Registry"
+  inputs:
+    command: login
+    containerRegistry: GAR-Connection
+
+# Build Image with Dynamic Tag
+- task: Docker@2
+  displayName: "Build Docker Image"
+  inputs:
+    command: build
+    Dockerfile: '**/Dockerfile'
+    tags: |
+      $(GAR_URL):v$(Build.BuildId)
+
+# Push Image
+- task: Docker@2
+  displayName: "Push Docker Image"
+  inputs:
+    command: push
+    tags: |
+      $(GAR_URL):v$(Build.BuildId)
+
+# Optional: Publish image name as pipeline output
+- script: |
+    echo "##vso[task.setvariable variable=IMAGE_URI]$(GAR_URL):v$(Build.BuildId)"
+  displayName: "Export IMAGE_URI Variable"
+
