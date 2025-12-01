@@ -23,10 +23,17 @@ steps:
   inputs:
     secureFile: 'mountain-peak-view.json'
 
-# Install Docker
+# Install Docker from Docker’s official repository
 - script: |
     sudo apt-get update
-    sudo apt-get install -y docker.io
+    sudo apt-get install -y ca-certificates curl gnupg
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    echo \
+      "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
   displayName: 'Install Docker'
 
 # Install Google Cloud SDK
