@@ -2,10 +2,11 @@ trigger:
 - main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: ubuntu-latest
 
 variables:
-- group: mountain-peak-view
+- group: mountain-peak-view   # <-- Your variable group with secrets
+
 - name: PROJECT_ID
   value: e00049-development-project
 - name: REGION
@@ -17,65 +18,79 @@ variables:
 
 steps:
 
-# Download the secure file (service account key)
+# ✅ 1️⃣ Checkout Source
+- checkout: self
+  displayName: "Checkout Source Code"
+
+# ✅ 2️⃣ Download Secure GCP Service Account Key
 - task: DownloadSecureFile@1
-  name: 'downloadKey'
+  name: gcpkey
   inputs:
-    secureFile: 'mountain-peak-view.json'
+    secureFile: mountain-peak-view.json
+  displayName: "Download GCP Service Account Key"
 
-# Install Docker from Docker’s official repository
+# ✅ 3️⃣ Install Google Cloud SDK
 - script: |
     sudo apt-get update
-    sudo apt-get install -y ca-certificates curl gnupg
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    echo \
-      "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+
+    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+      | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+      | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+
     sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-  displayName: 'Install Docker'
+    sudo apt-get install -y google-cloud-cli kubectl
+  displayName: "Install Google Cloud SDK & kubectl"
 
-# Install Google Cloud SDK
+# ✅ 4️⃣ Install GKE Auth Plugin (FIXES YOUR ERROR)
 - script: |
-    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
-    sudo apt-get update && sudo apt-get install -y google-cloud-sdk
-  displayName: 'Install Google Cloud SDK'
+    sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+    echo "✅ gke-gcloud-auth-plugin installed"
+  displayName: "Install GKE Auth Plugin"
 
-# Authenticate to GCP & GKE using the secure file
+# ✅ 5️⃣ Authenticate to GCP & GKE (SECURE FILE METHOD)
 - script: |
-    gcloud auth activate-service-account --key-file=$(downloadKey.secureFilePath)
+    gcloud auth activate-service-account --key-file=$(gcpkey.secureFilePath)
     gcloud config set project $(PROJECT_ID)
     gcloud container clusters get-credentials $(CLUSTER_NAME) --region $(REGION)
+
     kubectl get nodes
   displayName: "Authenticate to GKE"
 
-# Login to Google Artifact Registry
+# ✅ 6️⃣ Login to Google Artifact Registry
 - script: |
     gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
   displayName: "Login to GAR"
 
-# Build Docker Image with a Dynamic Tag
+# ✅ 7️⃣ Build Docker Image (Dynamic Tag)
 - script: |
     IMAGE_URI="us-central1-docker.pkg.dev/$(IMAGE_REPO):$(Build.BuildNumber)"
+
     docker build -t $IMAGE_URI .
     docker tag $IMAGE_URI us-central1-docker.pkg.dev/$(IMAGE_REPO):latest
+
     echo "##vso[task.setvariable variable=IMAGE_URI]$IMAGE_URI"
+    echo "✅ Built Image: $IMAGE_URI"
   displayName: "Build Docker Image"
 
-# Push the Docker Image to GAR
+# ✅ 8️⃣ Push Docker Image to GAR
 - script: |
     docker push us-central1-docker.pkg.dev/$(IMAGE_REPO):$(Build.BuildNumber)
     docker push us-central1-docker.pkg.dev/$(IMAGE_REPO):latest
   displayName: "Push Docker Image to GAR"
 
-# Deploy to GKE using the updated image
+# ✅ 9️⃣ Deploy to GKE using GitHub Deployment YAML
 - script: |
     echo "Deploying Image: $(IMAGE_URI)"
+
     sed -i "s|IMAGE_PLACEHOLDER|$(IMAGE_URI)|g" deployment/deployment.yaml
+
     kubectl apply -f deployment/deployment.yaml
     kubectl apply -f deployment/service.yaml
-    kubectl rollout status deployment/single-page-app --timeout=180s
-  displayName: "Deploy to GKE"
 
+    kubectl rollout status deployment/single-page-app --timeout=180s
+
+    echo "✅ Deployment Completed Successfully"
+  displayName: "Deploy to GKE"
