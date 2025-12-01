@@ -4,11 +4,6 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-# Use the Google Cloud SDK image with Docker included
-container:
-  image: google/cloud-sdk:slim-with-docker
-
-# Link your variable group for GCP credentials
 variables:
 - group: mountain-peak-view
 - name: PROJECT_ID
@@ -22,14 +17,28 @@ variables:
 
 steps:
 
-# Checkout the code
-- checkout: self
-  displayName: "Checkout Source Code"
+# Download the secure file (service account key)
+- task: DownloadSecureFile@1
+  name: 'downloadKey'
+  inputs:
+    secureFile: 'mountain-peak-view.json'
 
-# Authenticate to GCP & GKE
+# Install Docker
 - script: |
-    echo "$(GCP_SA_KEY)" | base64 -d > key.json
-    gcloud auth activate-service-account --key-file=key.json
+    sudo apt-get update
+    sudo apt-get install -y docker.io
+  displayName: 'Install Docker'
+
+# Install Google Cloud SDK
+- script: |
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+    sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+  displayName: 'Install Google Cloud SDK'
+
+# Authenticate to GCP & GKE using the secure file
+- script: |
+    gcloud auth activate-service-account --key-file=$(downloadKey.secureFilePath)
     gcloud config set project $(PROJECT_ID)
     gcloud container clusters get-credentials $(CLUSTER_NAME) --region $(REGION)
     kubectl get nodes
