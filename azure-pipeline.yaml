@@ -17,7 +17,7 @@ steps:
   displayName: "Login to Google Artifact Registry"
   inputs:
     command: login
-    containerRegistry: GAR-Connection
+    containerRegistry: GAR_Connection_1
 
 # Build Image with Dynamic Tag
 - task: Docker@2
