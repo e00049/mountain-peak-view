@@ -4,6 +4,10 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
+# ✅ Run all steps inside Google Cloud SDK container
+container:
+  image: google/cloud-sdk:latest
+
 variables:
   PROJECT_ID: "e00049-development-project"
   REGION: "us-central1"
@@ -12,79 +16,57 @@ variables:
 
 steps:
 
-# ✅ 0️⃣ Checkout Repo (important)
+# ✅ 1️⃣ Checkout Source
 - checkout: self
   displayName: "Checkout Source Code"
 
-# ✅ 1️⃣ Install Docker
-- task: DockerInstaller@0
-  displayName: "Install Docker"
-
-# ✅ 2️⃣ Login to Google Artifact Registry
-- task: Docker@2
-  displayName: "Login to Google Artifact Registry"
-  inputs:
-    command: login
-    containerRegistry: GAR_Connection_1
-
-# ✅ 3️⃣ Build Image with Dynamic Build Name
-- task: Docker@2
-  displayName: "Build Docker Image"
-  inputs:
-    command: build
-    repository: $(IMAGE_REPO)
-    dockerfile: '**/Dockerfile'
-    tags: |
-      $(Build.BuildNumber)
-      latest
-
-# ✅ 4️⃣ Push Image to GAR
-- task: Docker@2
-  displayName: "Push Docker Image to GAR"
-  inputs:
-    command: push
-    repository: $(IMAGE_REPO)
-    tags: |
-      $(Build.BuildNumber)
-      latest
-
-# ✅ 5️⃣ Create Image URI Variable
+# ✅ 2️⃣ Authenticate to GCP & GKE
 - script: |
-    IMAGE_URI="us-central1-docker.pkg.dev/$(IMAGE_REPO):$(Build.BuildNumber)"
-    echo "##vso[task.setvariable variable=IMAGE_URI]$IMAGE_URI"
-    echo "✅ Image Pushed: $IMAGE_URI"
-  displayName: "Export IMAGE_URI"
-
-
-# ✅ 6️⃣ Authenticate to GKE (Correct & Safe)
-- script: |
-    echo "$(GCP_SA_KEY)" | tr -d '\r' > key.json
-    cat key.json | head -n 2
+    echo "$(GCP_SA_KEY)" > key.json
 
     gcloud auth activate-service-account --key-file=key.json
     gcloud config set project $(PROJECT_ID)
     gcloud container clusters get-credentials $(CLUSTER_NAME) --region $(REGION)
 
-    gcloud auth list
     kubectl get nodes
   displayName: "Authenticate to GKE"
   env:
     GCP_SA_KEY: $(GCP_SA_KEY)
 
-
-# ✅ 7️⃣ Deploy to GKE using GitHub Manifests with Dynamic Image
+# ✅ 3️⃣ Login to Google Artifact Registry
 - script: |
-    echo "🚀 Deploying Image: $(IMAGE_URI)"
+    gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+  displayName: "Login to GAR"
 
-    # Replace placeholder with real image
+# ✅ 4️⃣ Build Docker Image with Dynamic Build Name
+- script: |
+    IMAGE_URI="us-central1-docker.pkg.dev/$(IMAGE_REPO):$(Build.BuildNumber)"
+
+    docker build -t $IMAGE_URI .
+    docker tag $IMAGE_URI us-central1-docker.pkg.dev/$(IMAGE_REPO):latest
+
+    echo "##vso[task.setvariable variable=IMAGE_URI]$IMAGE_URI"
+    echo "Built Image: $IMAGE_URI"
+  displayName: "Build Docker Image"
+
+# ✅ 5️⃣ Push Image to GAR
+- script: |
+    docker push us-central1-docker.pkg.dev/$(IMAGE_REPO):$(Build.BuildNumber)
+    docker push us-central1-docker.pkg.dev/$(IMAGE_REPO):latest
+  displayName: "Push Docker Image to GAR"
+
+# ✅ 6️⃣ Deploy to GKE using GitHub Deployment YAML
+- script: |
+    echo "Deploying Image: $(IMAGE_URI)"
+
     sed -i "s|IMAGE_PLACEHOLDER|$(IMAGE_URI)|g" deployment/deployment.yaml
 
-    echo "📄 Final Deployment YAML:"
     cat deployment/deployment.yaml
 
-    # Apply Kubernetes manifests
     kubectl apply -f deployment/deployment.yaml
     kubectl apply -f deployment/service.yaml
 
-    echo "✅ Deployment Successful"
-  displayName: "Deploy to GKE using Dynamic Image"
+    kubectl rollout status deployment/single-page-app --timeout=180s
+
+    echo "✅ Deployment Completed Successfully"
+  displayName: "Deploy to GKE"
